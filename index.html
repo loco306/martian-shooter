@@ -175,6 +175,7 @@ sun.shadow.camera.near=1; sun.shadow.camera.far=400; sun.shadow.camera.left=-70;
 scene.add(sun); scene.add(sun.target);
 function glowTex(inner,outer){ const cv=document.createElement('canvas'); cv.width=cv.height=128; const g=cv.getContext('2d'); const gr=g.createRadialGradient(64,64,4,64,64,64); gr.addColorStop(0,inner); gr.addColorStop(0.35,outer); gr.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=gr; g.fillRect(0,0,128,128); return new THREE.CanvasTexture(cv); }
 const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex('rgba(255,250,230,1)','rgba(255,200,120,0.35)'), transparent:true, depthWrite:false, blending:THREE.AdditiveBlending})); sunSprite.scale.set(260,260,1); scene.add(sunSprite);
+const dotTex=glowTex('rgba(255,255,255,1)','rgba(255,255,255,0.55)');
 const mars = new THREE.Mesh(new THREE.SphereGeometry(70,32,24), new THREE.MeshStandardMaterial({color:0xc4552e, roughness:1, emissive:0x3a1208})); mars.visible=false; scene.add(mars);
 
 // ground
@@ -384,13 +385,16 @@ function tracer(a,b,len){ const dir=b.clone().sub(a); const dist=dir.length(); d
 function impact(p, dir, kind){ const n=kind==='flesh'?24:14; const col=kind==='flesh'?0x39ff5a:(kind==='rock'?0xd9c9a0:0xbfa77a); const spark=kind==='rock';
   const g=new THREE.BufferGeometry(); const pos=new Float32Array(n*3), vel=[]; const c=new THREE.Color(col);
   for(let i=0;i<n;i++){ pos[i*3]=p.x; pos[i*3+1]=p.y; pos[i*3+2]=p.z; const v=dir.clone().multiplyScalar(-1).add(V3(rnd(-1,1),rnd(-0.2,1.2),rnd(-1,1))).normalize().multiplyScalar(rnd(1.5,kind==='flesh'?7:4)); vel.push(v); }
-  g.setAttribute('position', new THREE.BufferAttribute(pos,3)); const mat=new THREE.PointsMaterial({color:c, size:kind==='flesh'?0.14:0.09, transparent:true, opacity:1, depthWrite:false, blending:spark?THREE.AdditiveBlending:THREE.NormalBlending});
+  g.setAttribute('position', new THREE.BufferAttribute(pos,3)); const mat=new THREE.PointsMaterial({color:c, map:dotTex, alphaTest:0.2, size:kind==='flesh'?0.12:0.08, transparent:true, opacity:1, depthWrite:false, blending:spark?THREE.AdditiveBlending:THREE.NormalBlending});
   const pts=new THREE.Points(g,mat); scene.add(pts); parts.push({obj:pts, vel, t:0, life:kind==='flesh'?0.9:0.5, gravity:kind==='flesh'?1.2:0.6});
   if(kind==='dust'){ const puff=new THREE.Sprite(new THREE.SpriteMaterial({map:cloudMat.map, color:0xc9b48f, transparent:true, opacity:0.55, depthWrite:false})); puff.position.copy(p).setY(p.y+0.2); puff.scale.set(0.6,0.6,1); scene.add(puff); parts.push({obj:puff, sprite:true, t:0, life:0.7}); } }
 function launchRocket(){ const q=camera.getWorldQuaternion(new THREE.Quaternion()); const dir=V3(0,0,-1).applyQuaternion(q); const pos=camera.getWorldPosition(V3()).add(dir.clone().multiplyScalar(1.2));
   const m=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.5,10), metal(0x777777)); m.quaternion.setFromUnitVectors(V3(0,1,0), dir); m.position.copy(pos); scene.add(m);
   const trail=new THREE.PointLight(0xff8c30,1.5,8); m.add(trail); projs.push({mesh:m, vel:dir.multiplyScalar(110), t:4, smoke:0}); }
-function explode(pos, r){ poof(pos, 2.4, 0xff9a3a, true); playExplosion(); S.shake=0.4; let any=false, kill=false;
+function fireball(pos, r){ for(let i=0;i<5;i++){ const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex('rgba(255,240,180,1)','rgba(255,120,20,0.85)'), transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, opacity:0.95, rotation:Math.random()*6.28})); sp.position.copy(pos).add(V3(rnd(-0.6,0.6),rnd(-0.2,0.9),rnd(-0.6,0.6)).multiplyScalar(r*0.25)); sp.scale.setScalar(r*rnd(0.5,0.9)); scene.add(sp); parts.push({obj:sp, fire:true, t:0, life:rnd(0.35,0.55), grow:r*2.2}); }
+  for(let i=0;i<9;i++){ const sm=new THREE.Sprite(new THREE.SpriteMaterial({map:cloudMat.map, color:new THREE.Color().setHSL(0.08,0.2,rnd(0.12,0.3)), transparent:true, depthWrite:false, opacity:0.75, rotation:Math.random()*6.28})); sm.position.copy(pos).add(V3(rnd(-1,1),rnd(0,1),rnd(-1,1)).multiplyScalar(r*0.3)); sm.scale.setScalar(r*rnd(0.4,0.7)); sm.userData.v=V3(rnd(-1,1),rnd(1.5,3.5),rnd(-1,1)); scene.add(sm); parts.push({obj:sm, smoke:true, t:0, life:rnd(1.4,2.2), grow:r*1.6}); }
+  const l=new THREE.PointLight(0xffa040, 6, r*8); l.position.copy(pos); scene.add(l); parts.push({obj:l, light:true, t:0, life:0.45}); }
+function explode(pos, r){ fireball(pos, r); poof(pos, 1.6, 0xffb060, true); playExplosion(); S.shake=0.4; let any=false, kill=false;
   for(const b of [...balls]) if(b.mesh.position.distanceTo(pos)<r+b.r){ any=true; damageBall(b,99,b.mesh.position.clone(),V3()); }
   for(const a of [...aliens]) if(a.alive && a.g.position.distanceTo(pos)<r+1){ any=true; const d=a.g.position.clone().sub(pos).normalize(); d.y+=0.8; if(damageAlien(a, 99, a.g.position.clone().setY(1), d, false)) kill=true; }
   if(camera.getWorldPosition(V3()).distanceTo(pos)<r*0.7 && isAlienLevel()) hurtPlayer(25);
@@ -408,7 +412,7 @@ function missBall(b){ poof(b.mesh.position.clone().setY(0.3),b.r*0.9,0x9a8f7a,fa
 function poof(pos,r,colorHex,big){ const n=big?100:30; const g=new THREE.BufferGeometry(); const p=new Float32Array(n*3), v=[]; const base=new THREE.Color(colorHex); const cols=new Float32Array(n*3);
   for(let i=0;i<n;i++){ p[i*3]=pos.x; p[i*3+1]=pos.y; p[i*3+2]=pos.z; v.push(V3(Math.random()-0.5,Math.random()-0.5,Math.random()-0.5).normalize().multiplyScalar((3+Math.random()*9)*Math.sqrt(r))); const c=base.clone().offsetHSL((Math.random()-0.5)*0.12,0,(Math.random()-0.5)*0.25); cols[i*3]=c.r; cols[i*3+1]=c.g; cols[i*3+2]=c.b; }
   g.setAttribute('position',new THREE.BufferAttribute(p,3)); g.setAttribute('color',new THREE.BufferAttribute(cols,3));
-  const pts=new THREE.Points(g,new THREE.PointsMaterial({size:(big?0.45:0.25)*Math.sqrt(r), vertexColors:true, transparent:true, opacity:1, depthWrite:false})); scene.add(pts); parts.push({obj:pts, vel:v, t:0, life:big?1.3:0.6, gravity:0.7});
+  const pts=new THREE.Points(g,new THREE.PointsMaterial({size:(big?0.22:0.14)*Math.sqrt(r), map:dotTex, alphaTest:0.2, vertexColors:true, transparent:true, opacity:1, depthWrite:false})); scene.add(pts); parts.push({obj:pts, vel:v, t:0, life:big?1.3:0.6, gravity:0.7});
   if(big){ const ring=new THREE.Mesh(new THREE.SphereGeometry(1,20,12), new THREE.MeshBasicMaterial({color:colorHex, transparent:true, opacity:0.55, depthWrite:false})); ring.position.copy(pos); ring.scale.setScalar(r*0.6); scene.add(ring); parts.push({obj:ring, ring:true, t:0, life:0.35, r});
     const l=new THREE.PointLight(colorHex,3,r*14); l.position.copy(pos); scene.add(l); parts.push({obj:l, light:true, t:0, life:0.35}); } }
 
@@ -437,7 +441,7 @@ function killAlien(a, dir, headshot, point){ a.alive=false; a.state='dead'; a.t=
   if(headshot){ const p=a.parts; p.brain.visible=false; for(let i=0;i<8;i++){ const chunk=new THREE.Mesh(new THREE.SphereGeometry(rnd(0.03,0.07),6,5), A_BRAIN); chunk.position.copy(a.g.position).add(V3(0,1.65,0)); scene.add(chunk); parts.push({obj:chunk, chunk:true, vel:V3(rnd(-3,3),rnd(2,6),rnd(-3,3)), t:0, life:2.5}); } }
   S.killed++; S.streak=Math.max(S.streak,S.combo+1); const base=headshot?250:150; addScore(base+S.level*25, a.g.position.clone().setY(1.6), headshot?'HEADSHOT':''); if(S.combo>=3) streakText(['','','','TRIPLE KILL','RAMPAGE','UNSTOPPABLE','MARTIAN MENACE','ACK ACK ACK','WORLD SAVER'][Math.min(8,S.combo)]); hud(); }
 function bloodBurst(pos, mult){ const n=70*mult; const g=new THREE.BufferGeometry(); const p=new Float32Array(n*3), v=[]; for(let i=0;i<n;i++){ p[i*3]=pos.x; p[i*3+1]=pos.y; p[i*3+2]=pos.z; v.push(V3(rnd(-1,1),rnd(0.2,1.5),rnd(-1,1)).normalize().multiplyScalar(rnd(2,8))); }
-  g.setAttribute('position',new THREE.BufferAttribute(p,3)); const pts=new THREE.Points(g,new THREE.PointsMaterial({color:0x2fe04f, size:0.16, transparent:true, opacity:1, depthWrite:false})); scene.add(pts); parts.push({obj:pts, vel:v, t:0, life:1.4, gravity:1.3, splat:true});
+  g.setAttribute('position',new THREE.BufferAttribute(p,3)); const pts=new THREE.Points(g,new THREE.PointsMaterial({color:0x2fe04f, map:dotTex, alphaTest:0.2, size:0.13, transparent:true, opacity:1, depthWrite:false})); scene.add(pts); parts.push({obj:pts, vel:v, t:0, life:1.4, gravity:1.3, splat:true});
   const l=new THREE.PointLight(0x33ff55,2,6); l.position.copy(pos); scene.add(l); parts.push({obj:l, light:true, t:0, life:0.3}); }
 function alienShoot(a){ const tip=a.parts.tip.getWorldPosition(V3()); const target=camera.getWorldPosition(V3()); target.y-=S.crouch?0.5:0.15; const dist=tip.distanceTo(target);
   const miss=(0.25+(1-a.acc))*Math.min(1.8,0.5+dist/40)*(S.moving?1.7:1)*(S.crouch?1.4:1); target.add(V3(rnd(-1,1),rnd(-0.6,0.6),rnd(-1,1)).multiplyScalar(miss*3.2));
@@ -531,6 +535,8 @@ function step(dt){ const L=LEVELS[S.level]; const w=WEAPONS[S.wi];
     if(p.ring){ p.obj.scale.setScalar(p.r*(0.6+k*3)); p.obj.material.opacity=0.55*(1-k); }
     else if(p.light){ p.obj.intensity=3*(1-k); }
     else if(p.sprite){ p.obj.scale.addScalar(dt*2.5); p.obj.material.opacity=0.55*(1-k); p.obj.position.y+=dt*0.8; }
+    else if(p.fire){ p.obj.scale.addScalar(dt*p.grow); p.obj.material.opacity=0.95*(1-k*k); p.obj.material.rotation+=dt*2; }
+    else if(p.smoke){ p.obj.scale.addScalar(dt*p.grow); p.obj.material.opacity=0.75*(1-k); p.obj.position.addScaledVector(p.obj.userData.v, dt); p.obj.userData.v.multiplyScalar(1-1.2*dt); p.obj.material.rotation+=dt*0.6; }
     else if(p.chunk){ p.vel.y-=G*dt; p.obj.position.addScaledVector(p.vel,dt); if(p.obj.position.y<0.04){ p.obj.position.y=0.04; p.vel.set(0,0,0); } }
     else { const a=p.obj.geometry.attributes.position; const g=p.gravity||0.7; for(let i=0;i<p.vel.length;i++){ const v=p.vel[i]; v.y-=G*g*dt; v.multiplyScalar(1-1.5*dt); a.array[i*3]+=v.x*dt; a.array[i*3+1]+=v.y*dt; a.array[i*3+2]+=v.z*dt; if(p.splat&&a.array[i*3+1]<0.03){ a.array[i*3+1]=0.03; v.set(0,0,0); } } a.needsUpdate=true; p.obj.material.opacity=p.splat?Math.min(1,2-2*k):1-k; }
     if(k>=1){ scene.remove(p.obj); if(p.obj.geometry) p.obj.geometry.dispose(); if(p.obj.material&&!p.chunk) p.obj.material.dispose(); parts.splice(parts.indexOf(p),1); } }
